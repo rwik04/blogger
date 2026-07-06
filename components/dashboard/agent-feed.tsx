@@ -1,99 +1,75 @@
 "use client";
 
-import {
-  PenTool,
-  Search,
-  ShieldCheck,
-  Lightbulb,
-  Bot,
-} from "lucide-react";
-import { cn } from "@/lib/utils";
-import type { AgentEvent, AgentName } from "@/lib/types/blog";
-import { formatRelativeTime } from "@/lib/utils/seo-format";
+import Link from "next/link";
+import { Activity } from "lucide-react";
+import type { EventOut } from "@/lib/api/types";
+import { AgentEventTimeline, type TimelineEvent } from "@/components/shared/agent-event-timeline";
+
+export interface DashboardAgentEvent extends EventOut {
+  run_id: string;
+  run_topic: string;
+}
 
 interface AgentFeedProps {
-  events: AgentEvent[];
+  events: DashboardAgentEvent[];
+  isLoading: boolean;
 }
 
 /**
- * Agent icon and color configuration. Each agent gets a distinct visual
- * identity so editors can scan the feed quickly.
+ * Agent Activity feed — last ~20 pipeline node events across active runs,
+ * sourced from `GET /runs/{id}/events` (polled while any run is in flight,
+ * see `use-poll.ts`). blogger-backend has no SSE, so this is push-by-polling.
+ * Rendered as a growing vertical timeline (see `AgentEventTimeline`) so new
+ * events visibly extend the activity graph rather than just prepending rows.
  */
-const AGENT_CONFIG: Record<AgentName, { icon: React.ElementType; colorClass: string }> = {
-  writer: { icon: PenTool, colorClass: "text-proof-blue-light" },
-  seo_analyzer: { icon: Search, colorClass: "text-yellow-400" },
-  fact_checker: { icon: ShieldCheck, colorClass: "text-moss-light" },
-  topic_ideator: { icon: Lightbulb, colorClass: "text-on-surface-variant" },
-  narrative_finder: { icon: Bot, colorClass: "text-purple-400" },
-};
-
-/**
- * Agent Activity feed — renders the last ~20 AgentEvents, newest first.
- * Hidden entirely if no events (per task.md §7.1).
- *
- * In Phase 4, this will be driven by the SSE stream via useAgentStream().
- */
-export function AgentFeed({ events }: AgentFeedProps) {
-  if (events.length === 0) {
-    return null;
-  }
+export function AgentFeed({ events, isLoading }: AgentFeedProps) {
+  const timelineEvents: (TimelineEvent & { run_id: string; run_topic: string })[] = events.map(
+    (event, idx) => ({
+      ...event,
+      key: `${event.run_id}-${event.step}-${event.created_at}-${idx}`,
+    })
+  );
 
   return (
-    <div className="bg-surface-container border border-border rounded-lg overflow-hidden">
-      <div className="px-5 py-3 border-b border-border">
-        <h3 className="text-headline-md text-on-surface">Agent activity</h3>
+    <div className="rounded-lg bg-surface-container border border-border h-[460px] flex flex-col">
+      <div className="px-5 py-3 border-b border-border shrink-0">
+        <h3 className="text-headline-md text-on-surface font-normal">Agent activity</h3>
       </div>
 
-      <div className="divide-y divide-border max-h-[320px] overflow-y-auto">
-        {events.map((event, idx) => {
-          const config = AGENT_CONFIG[event.agent];
-          const Icon = config.icon;
-
-          return (
-            <div
-              key={`${event.timestamp}-${idx}`}
-              className="flex items-start gap-3 px-5 py-3 hover:bg-surface-container-high transition-colors duration-150"
-            >
-              {/* Agent icon with pulse for active drafting */}
-              <div
-                className={cn(
-                  "mt-0.5 shrink-0",
-                  config.colorClass,
-                  event.agent === "writer" && event.message.includes("Drafting")
-                    ? "animate-proof-pulse"
-                    : ""
-                )}
-              >
-                <Icon className="w-4 h-4" />
-              </div>
-
-              {/* Message */}
-              <p className="flex-1 text-ui-base text-on-surface-variant leading-relaxed">
-                <span className={cn("font-medium", config.colorClass)}>
-                  {formatAgentName(event.agent)}
-                </span>{" "}
-                {event.message.replace(/^[A-Z][a-z]+\s/, "")}
+      <div className="px-5 pt-4 pb-4 flex-1 min-h-0 flex flex-col">
+        {isLoading && (
+          <div className="flex-1 flex items-center justify-center text-ui-base text-graphite">
+            Loading events…
+          </div>
+        )}
+        {!isLoading && events.length === 0 && (
+          <div className="flex-1 flex flex-col items-center justify-center text-center gap-2">
+            <Activity className="w-6 h-6 text-graphite" />
+            <p className="text-ui-base text-on-surface-variant">
+              No agent activity right now. Kick off a run to see it live.
+            </p>
+          </div>
+        )}
+        {!isLoading && events.length > 0 && (
+          <AgentEventTimeline
+            events={timelineEvents}
+            maxHeightClassName="h-full"
+            renderHeading={(event) => (
+              <p className="text-ui-base text-on-surface font-medium truncate mb-0.5">
+                {event.run_topic}
               </p>
-
-              {/* Timestamp */}
-              <span className="text-data-value text-graphite shrink-0">
-                {formatRelativeTime(event.timestamp)}
-              </span>
-            </div>
-          );
-        })}
+            )}
+            renderRow={(event, children) => (
+              <Link
+                href={`/blogs/${event.run_id}`}
+                className="block rounded-md -mx-2 px-2 hover:bg-surface-container-high transition-colors duration-150"
+              >
+                {children}
+              </Link>
+            )}
+          />
+        )}
       </div>
     </div>
   );
-}
-
-function formatAgentName(agent: AgentName): string {
-  const labels: Record<AgentName, string> = {
-    writer: "Writer",
-    seo_analyzer: "SEO Analyzer",
-    fact_checker: "Fact Checker",
-    topic_ideator: "Topic Ideator",
-    narrative_finder: "Narrative Finder",
-  };
-  return labels[agent];
 }

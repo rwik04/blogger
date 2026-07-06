@@ -1,33 +1,89 @@
-import type { Metadata } from "next";
+"use client";
+
+import { useQuery } from "@tanstack/react-query";
 import { StatsRow } from "@/components/dashboard/stats-row";
 import { ContinueDraftingList } from "@/components/dashboard/continue-drafting-list";
-import { AgentFeed } from "@/components/dashboard/agent-feed";
+import { AgentFeed, type DashboardAgentEvent } from "@/components/dashboard/agent-feed";
 import { TopicQueue } from "@/components/dashboard/topic-queue";
-import { Trendmap } from "@/components/dashboard/trendmap";
-import {
-  MOCK_STATS,
-  MOCK_DRAFTS,
-  MOCK_AGENT_EVENTS,
-  MOCK_TOPICS,
-  MOCK_TRENDING,
-} from "@/lib/data/mock-data";
+import { TopicTreemap, type TrendingTopic } from "@/components/dashboard/topic-treemap";
+import { listRuns, getRunEvents, getStats } from "@/lib/api/runs";
+import { listTopics } from "@/lib/api/topics";
 
-export const metadata: Metadata = {
-  title: "Dashboard — Presswork CMS",
-  description: "Overview of your editorial pipeline: drafts in progress, agent activity, and trending topics.",
-};
+const ACTIVE_STATUSES = ["pending", "running", "strategizing", "writing", "finishing"];
 
 /**
- * Dashboard page — Priority 1
- *
- * Layout matches the "Blogger Dashboard - Extended Feed" screen from Stitch:
- * - Stats row (4 metric cards)
- * - Two-column grid: Trendmap + Continue Drafting (left), Agent Activity + Topic Queue (right)
+ * Dashboard page — live view of the pipeline: run stats, in-flight runs,
+ * a merged agent-event feed across active runs (polled — no SSE in the
+ * real backend), and the topic review queue.
  */
 export default function DashboardPage() {
+  const statsQuery = useQuery({
+    queryKey: ["stats"],
+    queryFn: getStats,
+    refetchInterval: 5000,
+  });
+
+  const activeRunsQuery = useQuery({
+    queryKey: ["runs", "active"],
+    queryFn: async () => {
+      const results = await Promise.all(ACTIVE_STATUSES.map((status) => listRuns({ status, limit: 20 })));
+      return results
+        .flatMap((r) => r.items)
+        .sort((a, b) => (b.created_at ?? "").localeCompare(a.created_at ?? ""));
+    },
+    refetchInterval: 5000,
+  });
+
+  const activeRuns = activeRunsQuery.data ?? [];
+
+  const eventsQuery = useQuery({
+    queryKey: ["runs", "active-events", activeRuns.map((r) => r.run_id).join(",")],
+    queryFn: async (): Promise<DashboardAgentEvent[]> => {
+      const topRuns = activeRuns.slice(0, 6);
+      const results = await Promise.all(
+        topRuns.map(async (run) => {
+          const { events } = await getRunEvents(run.run_id, 10);
+          return events.map((event) => ({ ...event, run_id: run.run_id, run_topic: run.topic }));
+        })
+      );
+      return results
+        .flat()
+        .sort((a, b) => (b.created_at ?? "").localeCompare(a.created_at ?? ""))
+        .slice(0, 20);
+    },
+    enabled: activeRuns.length > 0,
+    refetchInterval: 5000,
+  });
+
+  const topicsQuery = useQuery({
+    queryKey: ["topics", "suggested"],
+    queryFn: () => listTopics({ status: "suggested", limit: 50 }),
+    refetchInterval: 5000,
+  });
+
+  const allTopicsQuery = useQuery({
+    queryKey: ["topics", "all-for-treemap"],
+    queryFn: () => listTopics({ limit: 200 }),
+    refetchInterval: 15000,
+  });
+
+  const trendingTopics: TrendingTopic[] = (() => {
+    const items = allTopicsQuery.data?.items ?? [];
+    const bySubject = new Map<string, number>();
+    for (const topic of items) {
+      const key = topic.subject ?? "miscellaneous";
+      bySubject.set(key, (bySubject.get(key) ?? 0) + 1);
+    }
+    return Array.from(bySubject.entries()).map(([subject, count]) => ({
+      id: subject,
+      title: subject.replace(/_/g, " "),
+      subjectTag: subject.replace(/_/g, " "),
+      trendScore: count,
+    }));
+  })();
+
   return (
     <div className="p-6 space-y-6 max-w-[1600px]">
-      {/* Page header */}
       <div>
         <h2 className="text-headline-lg text-on-surface">Dashboard</h2>
         <p className="text-ui-base text-on-surface-variant mt-1">
@@ -35,22 +91,17 @@ export default function DashboardPage() {
         </p>
       </div>
 
-      {/* Stats row */}
-      <StatsRow stats={MOCK_STATS} />
+      <StatsRow
+        stats={statsQuery.data}
+        topicsQueued={topicsQuery.data?.items.length ?? 0}
+        isLoading={statsQuery.isLoading}
+      />
 
-      {/* Main content grid — two columns */}
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-        {/* Left column — wider */}
-        <div className="lg:col-span-3 space-y-6">
-          <Trendmap topics={MOCK_TRENDING} />
-          <ContinueDraftingList blogs={MOCK_DRAFTS} />
-        </div>
-
-        {/* Right column — narrower */}
-        <div className="lg:col-span-2 space-y-6">
-          <AgentFeed events={MOCK_AGENT_EVENTS} />
-          <TopicQueue topics={MOCK_TOPICS} />
-        </div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <TopicTreemap topics={trendingTopics} isLoading={allTopicsQuery.isLoading} />
+        <TopicQueue topics={topicsQuery.data?.items ?? []} isLoading={topicsQuery.isLoading} />
+        <ContinueDraftingList runs={activeRuns} isLoading={activeRunsQuery.isLoading} />
+        <AgentFeed events={eventsQuery.data ?? []} isLoading={eventsQuery.isLoading && activeRuns.length > 0} />
       </div>
     </div>
   );

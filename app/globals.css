@@ -42,6 +42,26 @@
   --color-moss: #4B7A51;
   --color-moss-light: #a0d3a3;
   --color-graphite: #6B6A65;
+  --color-amber: #B8862B;
+  --color-amber-light: #e0b563;
+  --color-teal: #2C7A7A;
+  --color-teal-light: #7fd4d4;
+  --color-violet: #6B5CA5;
+  --color-violet-light: #b8aee0;
+  --color-tangerine: #B5651D;
+  --color-tangerine-light: #e3a066;
+  --color-rose: #A84670;
+  --color-rose-light: #e0a3c0;
+  --color-indigo: #5B5EA6;
+  --color-indigo-light: #b3b5e6;
+  --color-sky: #2D82B7;
+  --color-sky-light: #8ec9ea;
+
+  /* Semantic aliases for shadcn-style component variants */
+  --color-success: var(--color-moss);
+  --color-success-light: var(--color-moss-light);
+  --color-warning: var(--color-amber);
+  --color-warning-light: var(--color-amber-light);
 
   /* Surface tonal layers */
   --color-surface: #141311;

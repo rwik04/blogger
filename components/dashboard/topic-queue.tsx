@@ -1,97 +1,108 @@
 "use client";
 
+import { useRouter } from "next/navigation";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { Check, X, Lightbulb } from "lucide-react";
-import { cn } from "@/lib/utils";
-import type { TopicSuggestion } from "@/lib/types/blog";
+import { Check, X, Lightbulb, Loader2 } from "lucide-react";
+import type { TopicOut } from "@/lib/api/types";
+import { selectTopic } from "@/lib/api/topics";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 
 interface TopicQueueProps {
-  topics: TopicSuggestion[];
+  topics: TopicOut[];
+  isLoading: boolean;
 }
 
 /**
- * Topic Review Queue — displays pending topic suggestions with approve/reject actions.
- *
- * Approve/reject is optimistic in Phase 1 (immediate UI update). In Phase 4,
- * this will use TanStack Query mutations with rollback on failure + toast.
+ * Topic Review Queue — pending topic suggestions (`status="suggested"`)
+ * from `GET /topics`. Approve calls `POST /topics/{id}/select` (kicks off a
+ * real Researcher run) and jumps straight into the new run's editor.
+ * Reject is UI-only — blogger-backend has no reject/dismiss endpoint.
  */
-export function TopicQueue({ topics: initialTopics }: TopicQueueProps) {
-  const [topics, setTopics] = useState(initialTopics);
+export function TopicQueue({ topics, isLoading }: TopicQueueProps) {
+  const router = useRouter();
+  const queryClient = useQueryClient();
+  const [dismissed, setDismissed] = useState<Set<string>>(new Set());
 
-  const handleApprove = (id: string) => {
-    setTopics((prev) =>
-      prev.map((t) => (t.id === id ? { ...t, status: "approved" as const } : t))
-    );
-  };
+  const approveMutation = useMutation({
+    mutationFn: (topicId: string) => selectTopic(topicId),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["topics"] });
+      router.push(`/blogs/${data.run_id}`);
+    },
+  });
 
-  const handleReject = (id: string) => {
-    setTopics((prev) =>
-      prev.map((t) => (t.id === id ? { ...t, status: "rejected" as const } : t))
-    );
-  };
+  const visibleTopics = topics.filter((t) => !dismissed.has(t.topic_id));
 
-  const pendingTopics = topics.filter((t) => t.status === "pending");
-
-  if (pendingTopics.length === 0) {
+  if (!isLoading && visibleTopics.length === 0) {
     return (
-      <div className="bg-surface-container border border-border rounded-lg p-6 text-center">
+      <Card className="rounded-lg bg-surface-container ring-0 border border-border p-6 text-center h-[460px] flex flex-col items-center justify-center">
         <Lightbulb className="w-6 h-6 text-graphite mx-auto mb-2" />
         <p className="text-ui-base text-on-surface-variant">
-          No topics waiting. Add one manually.
+          No topics waiting. Generate some from New Blog.
         </p>
-      </div>
+      </Card>
     );
   }
 
   return (
-    <div className="bg-surface-container border border-border rounded-lg overflow-hidden">
-      <div className="px-5 py-3 border-b border-border">
-        <h3 className="text-headline-md text-on-surface">Topics awaiting review</h3>
-      </div>
+    <Card className="rounded-lg bg-surface-container ring-0 border border-border p-0 gap-0 h-[460px] flex flex-col">
+      <CardHeader className="px-5 py-3 border-b border-border shrink-0">
+        <CardTitle className="text-headline-md text-on-surface font-normal">
+          Topics awaiting review
+        </CardTitle>
+      </CardHeader>
 
-      <div className="divide-y divide-border">
-        {pendingTopics.slice(0, 5).map((topic) => (
-          <div
-            key={topic.id}
-            id={`topic-${topic.id}`}
-            className="flex items-center gap-4 px-5 py-3 hover:bg-surface-container-high transition-colors duration-150"
-          >
-            <div className="flex-1 min-w-0">
-              <p className="text-ui-medium text-on-surface truncate">
-                {topic.title}
-              </p>
-              <div className="flex items-center gap-2 mt-0.5">
-                <span className="text-data-label text-graphite">
-                  {topic.subjectTag}
-                </span>
-                {topic.examPaper && (
-                  <span className="text-data-label text-graphite">
-                    {topic.examPaper}
-                  </span>
-                )}
+      <CardContent className="p-0 divide-y divide-border flex-1 min-h-0 overflow-y-auto">
+        {isLoading && <div className="px-5 py-4 text-ui-base text-graphite">Loading topics…</div>}
+        {visibleTopics.map((topic) => {
+          const isApproving = approveMutation.isPending && approveMutation.variables === topic.topic_id;
+
+          return (
+            <div
+              key={topic.topic_id}
+              className="flex items-center gap-4 px-5 py-3 hover:bg-surface-container-high transition-colors duration-150"
+            >
+              <div className="flex-1 min-w-0">
+                <p className="text-ui-medium text-on-surface truncate">{topic.title}</p>
+                <div className="flex items-center gap-2 mt-0.5">
+                  {topic.subject && (
+                    <span className="text-data-label text-graphite">
+                      {topic.subject.replace(/_/g, " ")}
+                    </span>
+                  )}
+                  {topic.dedup_status !== "new" && (
+                    <span className="text-data-label text-amber-light">{topic.dedup_status}</span>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  disabled={approveMutation.isPending}
+                  onClick={() => approveMutation.mutate(topic.topic_id)}
+                  className="text-success-light hover:bg-success/25 hover:text-success-light"
+                  aria-label={`Select ${topic.title}`}
+                >
+                  {isApproving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={() => setDismissed((prev) => new Set(prev).add(topic.topic_id))}
+                  className="text-redline-light hover:bg-redline/25 hover:text-redline-light"
+                  aria-label={`Dismiss ${topic.title}`}
+                >
+                  <X className="w-4 h-4" />
+                </Button>
               </div>
             </div>
-
-            {/* Action buttons */}
-            <div className="flex items-center gap-2 shrink-0">
-              <button
-                onClick={() => handleApprove(topic.id)}
-                className="p-1.5 rounded-md bg-moss/15 text-moss-light hover:bg-moss/25 transition-colors duration-150"
-                aria-label={`Approve ${topic.title}`}
-              >
-                <Check className="w-4 h-4" />
-              </button>
-              <button
-                onClick={() => handleReject(topic.id)}
-                className="p-1.5 rounded-md bg-redline/15 text-redline-light hover:bg-redline/25 transition-colors duration-150"
-                aria-label={`Reject ${topic.title}`}
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
+          );
+        })}
+      </CardContent>
+    </Card>
   );
 }
