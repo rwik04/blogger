@@ -25,6 +25,16 @@ export function getScoreBgColor(score: number): string {
  */
 export function formatStatus(status: string): string {
   const labels: Record<string, string> = {
+    pending: "Pending",
+    running: "Researching",
+    strategizing: "Strategizing",
+    writing: "Writing",
+    finishing: "Finishing",
+    done: "Done",
+    failed: "Failed",
+    needs_review: "Needs Review",
+    paused: "Paused",
+    // legacy / topic-candidate statuses
     drafting: "Drafting",
     needs_revision: "Needs Revision",
     in_review: "In Review",
@@ -32,6 +42,10 @@ export function formatStatus(status: string): string {
     published: "Published",
     queued: "Queued",
     approved: "Approved",
+    suggested: "Suggested",
+    selected: "Selected",
+    new: "New",
+    similar_to_existing: "Similar",
   };
   return labels[status] ?? status;
 }
