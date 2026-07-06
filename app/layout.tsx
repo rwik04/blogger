@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter, Source_Serif_4, IBM_Plex_Mono } from "next/font/google";
 import { Nav } from "@/components/shared/nav";
 import { TopBar } from "@/components/shared/top-bar";
+import { Providers } from "./providers";
 import "./globals.css";
 
 const inter = Inter({
@@ -40,13 +41,15 @@ export default function RootLayout({
       className={`${inter.variable} ${sourceSerif.variable} ${ibmPlexMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-background text-foreground">
-        <div className="flex min-h-screen">
-          <Nav />
-          <div className="flex-1 ml-[260px] flex flex-col">
-            <TopBar />
-            <main className="flex-1 overflow-y-auto">{children}</main>
+        <Providers>
+          <div className="flex min-h-screen">
+            <Nav />
+            <div className="flex-1 ml-[260px] flex flex-col">
+              <TopBar />
+              <main className="flex-1 overflow-y-auto">{children}</main>
+            </div>
           </div>
-        </div>
+        </Providers>
       </body>
     </html>
   );
