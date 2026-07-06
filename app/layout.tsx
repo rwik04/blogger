@@ -25,7 +25,7 @@ const ibmPlexMono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Presswork CMS — Editorial Desk",
+  title: "blogger",
   description:
     "AI-powered content management system for UPSC blog production. Write, review, and publish with intelligent agent assistance.",
 };
