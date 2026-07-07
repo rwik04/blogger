@@ -1,0 +1,48 @@
+name: Deploy to EC2
+
+# SSH-based deploy: no AWS API calls, no long-lived AWS credentials — just a
+# private key that can log into the box. The server already has the repo
+# cloned, its own .env.production (NEXT_PUBLIC_* vars get inlined at build
+# time, so this has to exist on the server before `next build` runs), and a
+# systemd service configured; this workflow just pulls the latest main,
+# rebuilds, and restarts the service.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+concurrency:
+  group: deploy-frontend
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ vars.EC2_USER || 'ubuntu' }}
+          key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+          command_timeout: 15m
+          script_stop: true
+          script: |
+            set -euo pipefail
+
+            cd "${{ vars.FRONTEND_DEPLOY_PATH || '/home/ubuntu/blogger' }}"
+
+            echo "==> Fetching latest main"
+            git fetch origin main
+            git reset --hard origin/main
+
+            echo "==> Installing dependencies"
+            npm ci
+
+            echo "==> Building"
+            npm run build
+
+            echo "==> Restarting service"
+            sudo systemctl restart "${{ vars.FRONTEND_SERVICE_NAME || 'blogger-frontend' }}"
+            sleep 2
+            sudo systemctl status "${{ vars.FRONTEND_SERVICE_NAME || 'blogger-frontend' }}" --no-pager
