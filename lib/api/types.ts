@@ -154,8 +154,11 @@ export interface MCQStatement {
   claim_id: string | null;
 }
 
+export type QuestionType = "statement_based" | "direct";
+
 export interface UpscStyleQuestion {
   question_id: string;
+  question_type: QuestionType;
   stem: string;
   statements: MCQStatement[];
   options: MCQOption[];
@@ -210,6 +213,7 @@ export interface PublishedBlogSection {
 export interface PublishedBlogQuestion {
   id: string;
   run_id: string;
+  question_type: QuestionType;
   stem: string;
   statements: MCQStatement[];
   options: MCQOption[];

@@ -63,12 +63,20 @@ export function DetailsTab({ research, finish }: DetailsTabProps) {
         {!finish ? (
           <p className="text-ui-base text-graphite">Run Finish to generate the quiz.</p>
         ) : finish.questions.length === 0 ? (
-          <p className="text-ui-base text-graphite">No quiz generated for this run.</p>
+          <p className="text-ui-base text-graphite">
+            {finish.quality_flags.find((flag) => flag.startsWith("Quiz skipped"))
+              ?? "No quiz generated for this run."}
+          </p>
         ) : (
           <div className="space-y-4">
             {finish.questions.map((q) => (
               <div key={q.question_id} className="rounded-md border border-border p-3 space-y-2">
-                <p className="text-ui-medium text-on-surface">{q.stem}</p>
+                <div className="flex items-start justify-between gap-2">
+                  <p className="text-ui-medium text-on-surface">{q.stem}</p>
+                  <Badge variant="neutral" className="shrink-0">
+                    {q.question_type === "direct" ? "Direct" : "Statement-based"}
+                  </Badge>
+                </div>
                 {q.statements.length > 0 && (
                   <ol className="list-decimal pl-5 space-y-1">
                     {q.statements.map((s, i) => (
@@ -98,6 +106,21 @@ export function DetailsTab({ research, finish }: DetailsTabProps) {
           </div>
         )}
       </div>
+
+      {finish && finish.quality_flags.filter((flag) => !flag.startsWith("Quiz skipped")).length > 0 && (
+        <div className="space-y-2 pt-3 border-t border-border">
+          <h4 className="text-data-label text-graphite">Quality flags</h4>
+          <ul className="space-y-1">
+            {finish.quality_flags
+              .filter((flag) => !flag.startsWith("Quiz skipped"))
+              .map((flag, i) => (
+                <li key={i} className="text-ui-base text-amber-600">
+                  {flag}
+                </li>
+              ))}
+          </ul>
+        </div>
+      )}
 
       {finish && finish.media.length > 0 && (
         <div className="space-y-3 pt-3 border-t border-border">

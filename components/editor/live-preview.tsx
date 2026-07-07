@@ -130,6 +130,7 @@ export function LivePreview({ run, blog, strategize, sections }: LivePreviewProp
                     {questions.map((q) => (
                       <BlogQuizBlock
                         key={q.id}
+                        questionType={q.question_type}
                         stem={q.stem}
                         statements={q.statements}
                         options={q.options}

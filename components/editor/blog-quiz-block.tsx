@@ -3,9 +3,10 @@
 import { useState } from "react";
 import { CheckCircle2, XCircle, HelpCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { MCQOption, MCQStatement } from "@/lib/api/types";
+import type { MCQOption, MCQStatement, QuestionType } from "@/lib/api/types";
 
 interface BlogQuizBlockProps {
+  questionType: QuestionType;
   stem: string;
   statements: MCQStatement[];
   options: MCQOption[];
@@ -14,17 +15,31 @@ interface BlogQuizBlockProps {
 }
 
 /**
- * Interactive UPSC-style MCQ rendered inline within the article body, right
- * after the section it was drawn from — click an option to check yourself,
- * the explanation reveals alongside the correct answer.
+ * Interactive MCQ rendered inline within the article body, right after the
+ * section it was drawn from — click an option to check yourself, the
+ * explanation reveals alongside the correct answer.
  *
- * UPSC prelims MCQs are statement-based: the `options` (e.g. "1 and 3
- * only") only make sense alongside the numbered `statements` they refer
- * to, so both have to render together — `is_true` is never shown here,
- * that's exactly what picking an option is supposed to reveal.
+ * Two shapes, per `questionType`:
+ * - "statement_based": UPSC prelims style — the `options` (e.g. "1 and 3
+ *   only") only make sense alongside the numbered `statements` they refer
+ *   to, so both render together, plus the "Which of the statements..."
+ *   lead-in line.
+ * - "direct": a plain single-answer question — `stem` already reads as the
+ *   full question, so no statements list or lead-in line is shown, just
+ *   the question followed directly by its answer choices.
+ * `is_true`/`is_correct` are never shown ahead of time either way — that's
+ * exactly what picking an option is supposed to reveal.
  */
-export function BlogQuizBlock({ stem, statements, options, correctOption, explanation }: BlogQuizBlockProps) {
+export function BlogQuizBlock({
+  questionType,
+  stem,
+  statements,
+  options,
+  correctOption,
+  explanation,
+}: BlogQuizBlockProps) {
   const [selected, setSelected] = useState<string | null>(null);
+  const isStatementBased = questionType === "statement_based";
 
   return (
     <div className="my-6 rounded-lg border border-sky/30 bg-sky/[0.06] overflow-hidden not-prose">
@@ -36,7 +51,7 @@ export function BlogQuizBlock({ stem, statements, options, correctOption, explan
       <div className="p-4 space-y-3">
         <p className="text-ui-medium text-on-surface">{stem}</p>
 
-        {statements.length > 0 && (
+        {isStatementBased && statements.length > 0 && (
           <ol className="list-decimal pl-5 space-y-1.5">
             {statements.map((s, i) => (
               <li key={i} className="text-ui-base text-on-surface-variant">
@@ -46,9 +61,11 @@ export function BlogQuizBlock({ stem, statements, options, correctOption, explan
           </ol>
         )}
 
-        <p className="text-ui-base text-on-surface-variant italic">
-          Which of the statement{statements.length > 1 ? "s" : ""} given above is/are correct?
-        </p>
+        {isStatementBased && (
+          <p className="text-ui-base text-on-surface-variant italic">
+            Which of the statement{statements.length > 1 ? "s" : ""} given above is/are correct?
+          </p>
+        )}
 
         <div className="space-y-1.5">
           {options.map((opt) => {
