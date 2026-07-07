@@ -79,6 +79,14 @@ export function editSection(
   });
 }
 
+/** Directly overwrites a section's markdown — no LLM call, applied immediately. */
+export function manualEditSection(runId: string, sectionId: string, bodyMarkdown: string) {
+  return apiFetch<WriterOutput>(`/runs/${runId}/write/sections/${sectionId}`, {
+    method: "PUT",
+    body: { body_markdown: bodyMarkdown },
+  });
+}
+
 export function startFinish(runId: string, includeQuiz?: boolean) {
   return apiFetch<QueuedResponse>(`/runs/${runId}/finish`, {
     method: "POST",

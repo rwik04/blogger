@@ -2,10 +2,10 @@
 
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, ChevronUp, Sparkles, Loader2, AlertTriangle } from "lucide-react";
+import { ChevronDown, ChevronUp, Sparkles, Loader2, AlertTriangle, Pencil, Check, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { EditPreset, OutlineSection, SectionResult } from "@/lib/api/types";
-import { editSection } from "@/lib/api/runs";
+import { editSection, manualEditSection } from "@/lib/api/runs";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
@@ -87,9 +87,7 @@ export function SectionEditorPanel({ runId, outline, sections, isWriting }: Sect
                 <div className="px-4 py-4 space-y-4 bg-surface-container">
                   {section ? (
                     <>
-                      <div className="text-body-content text-on-surface-variant space-y-2 max-h-[320px] overflow-y-auto pr-1">
-                        {renderMarkdownLite(section.body_markdown)}
-                      </div>
+                      <SectionBody runId={runId} sectionId={outlineSection.section_id} section={section} />
                       {section.unsupported_gaps.length > 0 && (
                         <p className="text-data-label text-amber-light">
                           Unresolved gaps: {section.unsupported_gaps.join("; ")}
@@ -107,6 +105,85 @@ export function SectionEditorPanel({ runId, outline, sections, isWriting }: Sect
             </div>
           );
         })}
+    </div>
+  );
+}
+
+/**
+ * Rendered body + an "Edit" toggle for directly overwriting the section's
+ * markdown — no LLM call, applied immediately via `PUT .../sections/{id}`.
+ * Separate from `RegenerateControl`, which goes through the Writer's AI
+ * rewrite instead.
+ */
+function SectionBody({
+  runId,
+  sectionId,
+  section,
+}: {
+  runId: string;
+  sectionId: string;
+  section: SectionResult;
+}) {
+  const queryClient = useQueryClient();
+  const [isEditing, setIsEditing] = useState(false);
+  const [draft, setDraft] = useState(section.body_markdown);
+
+  const mutation = useMutation({
+    mutationFn: () => manualEditSection(runId, sectionId, draft),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["write", runId] });
+      setIsEditing(false);
+    },
+  });
+
+  const startEditing = () => {
+    setDraft(section.body_markdown);
+    setIsEditing(true);
+  };
+
+  if (isEditing) {
+    return (
+      <div className="space-y-2">
+        <Textarea
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          className="min-h-[240px] font-mono text-ui-base"
+          autoFocus
+        />
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            disabled={mutation.isPending || draft.trim().length === 0}
+            onClick={() => mutation.mutate()}
+          >
+            {mutation.isPending ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <Check className="w-3.5 h-3.5" />
+            )}
+            Save
+          </Button>
+          <Button size="sm" variant="ghost" disabled={mutation.isPending} onClick={() => setIsEditing(false)}>
+            <X className="w-3.5 h-3.5" />
+            Cancel
+          </Button>
+          {mutation.isError && (
+            <span className="text-data-label text-redline-light">Failed to save edit.</span>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="text-body-content text-on-surface-variant space-y-2 max-h-[320px] overflow-y-auto pr-1">
+        {renderMarkdownLite(section.body_markdown)}
+      </div>
+      <Button size="sm" variant="ghost" onClick={startEditing}>
+        <Pencil className="w-3.5 h-3.5" />
+        Edit
+      </Button>
     </div>
   );
 }

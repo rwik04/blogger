@@ -35,17 +35,27 @@ export function renderMarkdownLite(source: string): React.ReactNode[] {
     listType = null;
   };
 
+  // A blank line between two list items (a "loose list", e.g. the Writer's
+  // numbered breakdown with a blank line between entries for readability)
+  // must NOT end the list — only defer that decision until we see what
+  // actually follows. Flushing eagerly on every blank line was the bug
+  // behind lists rendering as "1. 1. 1. 1.": each item ended up in its own
+  // one-item <ol>, and the browser numbers every fresh <ol> starting at 1,
+  // no matter what number the source markdown used.
+  let pendingBlank = false;
+
   for (const rawLine of lines) {
     const line = rawLine.trim();
 
     if (line === "") {
-      flushList();
+      pendingBlank = true;
       continue;
     }
 
     const headingMatch = /^(#{1,4})\s+(.*)$/.exec(line);
     if (headingMatch) {
       flushList();
+      pendingBlank = false;
       const level = headingMatch[1].length;
       const tag = level === 1 ? "h2" : level === 2 ? "h3" : "h4";
       const sizeClass = level <= 2 ? "text-headline-md" : "text-ui-medium font-semibold";
@@ -64,6 +74,7 @@ export function renderMarkdownLite(source: string): React.ReactNode[] {
       if (listType === "ul") flushList();
       listType = "ol";
       listItems.push(orderedMatch[1]);
+      pendingBlank = false;
       continue;
     }
 
@@ -72,10 +83,23 @@ export function renderMarkdownLite(source: string): React.ReactNode[] {
       if (listType === "ol") flushList();
       listType = "ul";
       listItems.push(unorderedMatch[1]);
+      pendingBlank = false;
+      continue;
+    }
+
+    // A plain line straight after a list marker, with no blank line in
+    // between, is the Writer's other common shape — a bold label on its own
+    // line with the detail wrapping onto the next line(s) — not a new
+    // paragraph. Only merge when there was no blank line first; a plain
+    // paragraph genuinely separated from the list by a blank line still
+    // ends the list normally.
+    if (listType !== null && listItems.length > 0 && !pendingBlank) {
+      listItems[listItems.length - 1] = `${listItems[listItems.length - 1]} ${line}`;
       continue;
     }
 
     flushList();
+    pendingBlank = false;
     blocks.push(
       React.createElement("p", { key: `p-${key++}` }, renderInline(line))
     );
