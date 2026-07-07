@@ -37,3 +37,7 @@ export function getTopic(topicId: string) {
 export function selectTopic(topicId: string) {
   return apiFetch<SelectTopicResponse>(`/topics/${topicId}/select`, { method: "POST" });
 }
+
+export function deleteTopic(topicId: string) {
+  return apiFetch<void>(`/topics/${topicId}`, { method: "DELETE" });
+}
