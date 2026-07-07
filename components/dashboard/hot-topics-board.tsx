@@ -1,37 +1,30 @@
 "use client";
 
+import { useState } from "react";
 import { cn } from "@/lib/utils";
-import { TrendingUp } from "lucide-react";
+import { Flame } from "lucide-react";
 import { getSubjectStyle } from "@/lib/constants/tag-colors";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { HotTopicsModal } from "@/components/dashboard/hot-topics-modal";
+import type { TopicOut } from "@/lib/api/types";
 
-export interface TrendingTopic {
-  id: string;
-  title: string;
-  subjectTag: string;
-  trendScore: number;
+export interface HotTopicDomain {
+  subject: string;
+  heat: number;
+  topics: TopicOut[];
 }
 
-interface TopicTreemapProps {
-  topics: TrendingTopic[];
+interface HotTopicsBoardProps {
+  domains: HotTopicDomain[];
   isLoading: boolean;
 }
 
-/**
- * Topic Treemap — visual display of today's trending topics.
- * Each topic is rendered as a tile whose area is proportional to its
- * trend score, color-coded by subject tag, laid out with a squarified
- * treemap algorithm.
- *
- * This matches the "Today's topic treemap" section in the Stitch designs.
- */
-
 interface TreemapTile {
-  topic: TrendingTopic;
-  x: number; // 0-100 (%)
-  y: number; // 0-100 (%)
-  width: number; // 0-100 (%)
-  height: number; // 0-100 (%)
+  domain: HotTopicDomain;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 }
 
 interface Rect {
@@ -46,15 +39,12 @@ interface Rect {
  * aspect ratios as close to square as possible.
  * See: Bruls, Huizing, van Wijk (2000), "Squarified Treemaps".
  */
-function squarify(
-  items: TrendingTopic[],
-  rect: Rect
-): TreemapTile[] {
+function squarify(items: HotTopicDomain[], rect: Rect): TreemapTile[] {
   if (items.length === 0) return [];
 
-  const total = items.reduce((sum, t) => sum + t.trendScore, 0);
+  const total = items.reduce((sum, t) => sum + t.heat, 0);
   const area = rect.width * rect.height;
-  const values = items.map((t) => (t.trendScore / total) * area);
+  const values = items.map((t) => (t.heat / total) * area);
 
   const tiles: TreemapTile[] = [];
   let remaining = rect;
@@ -66,7 +56,7 @@ function squarify(
     const shortSide = isHorizontal ? remaining.height : remaining.width;
 
     let row: number[] = [remainingValues[0]];
-    const rowItems: TrendingTopic[] = [remainingItems[0]];
+    const rowItems: HotTopicDomain[] = [remainingItems[0]];
     let bestRatio = worstRatio(row, shortSide);
 
     let i = 1;
@@ -89,7 +79,7 @@ function squarify(
       const tile: Rect = isHorizontal
         ? { x: remaining.x, y: remaining.y + offset, width: rowThickness, height: itemLength }
         : { x: remaining.x + offset, y: remaining.y, width: itemLength, height: rowThickness };
-      tiles.push({ topic: rowItems[j], ...tile });
+      tiles.push({ domain: rowItems[j], ...tile });
       offset += itemLength;
     }
 
@@ -115,17 +105,26 @@ function worstRatio(row: number[], shortSide: number): number {
   );
 }
 
-export function TopicTreemap({ topics, isLoading }: TopicTreemapProps) {
-  const sorted = [...topics].sort((a, b) => b.trendScore - a.trendScore);
+/**
+ * Hot Topics — sized-by-relevance treemap of the day's suggested topics,
+ * grouped by subject. Each tile's area reflects the combined relevance of
+ * every topic in that subject (not just how many there are), and its hook
+ * line surfaces the single highest-relevance story so the tile actually
+ * says something instead of repeating the subject name twice. Clicking a
+ * tile opens the full topic list for that subject.
+ */
+export function HotTopicsBoard({ domains, isLoading }: HotTopicsBoardProps) {
+  const [activeSubject, setActiveSubject] = useState<string | null>(null);
+
+  const sorted = [...domains].sort((a, b) => b.heat - a.heat);
   const tiles = squarify(sorted, { x: 0, y: 0, width: 100, height: 100 });
+  const activeDomain = domains.find((d) => d.subject === activeSubject) ?? null;
 
   return (
     <Card className="rounded-lg bg-surface-container ring-0 border border-border p-0 gap-0 h-[460px] flex flex-col">
       <CardHeader className="px-5 py-3 border-b border-border flex flex-row items-center gap-2 shrink-0">
-        <TrendingUp className="w-4 h-4 text-proof-blue-light" />
-        <CardTitle className="text-headline-md text-on-surface font-normal">
-          Suggested topics by subject
-        </CardTitle>
+        <Flame className="w-4 h-4 text-amber-light" />
+        <CardTitle className="text-headline-md text-on-surface font-normal">Hot Topics</CardTitle>
       </CardHeader>
 
       <CardContent className="p-3 flex-1 min-h-0 flex flex-col">
@@ -141,13 +140,16 @@ export function TopicTreemap({ topics, isLoading }: TopicTreemapProps) {
         )}
         {!isLoading && tiles.length > 0 && (
           <div className="relative w-full flex-1">
-            {tiles.map(({ topic, x, y, width, height }) => {
-              const tileColor = getSubjectStyle(topic.subjectTag).bg;
+            {tiles.map(({ domain, x, y, width, height }) => {
+              const tileColor = getSubjectStyle(domain.subject).bg;
               const isSmall = width < 12 || height < 12;
+              const topStory = [...domain.topics].sort(
+                (a, b) => (b.relevance_score ?? 0) - (a.relevance_score ?? 0)
+              )[0];
 
               return (
                 <div
-                  key={topic.id}
+                  key={domain.subject}
                   className="absolute p-0.5"
                   style={{
                     left: `${x}%`,
@@ -156,9 +158,11 @@ export function TopicTreemap({ topics, isLoading }: TopicTreemapProps) {
                     height: `${height}%`,
                   }}
                 >
-                  <div
+                  <button
+                    type="button"
+                    onClick={() => setActiveSubject(domain.subject)}
                     className={cn(
-                      "group relative h-full w-full rounded-sm overflow-hidden cursor-pointer",
+                      "group relative h-full w-full rounded-sm overflow-hidden cursor-pointer text-left",
                       "ring-1 ring-surface-container ring-inset transition-all duration-300",
                       "hover:z-10 hover:ring-2 hover:ring-on-surface/40 hover:brightness-110",
                       tileColor
@@ -166,8 +170,8 @@ export function TopicTreemap({ topics, isLoading }: TopicTreemapProps) {
                   >
                     <div className="absolute inset-0 flex flex-col justify-between p-2 overflow-hidden">
                       {!isSmall && (
-                        <span className="text-data-label text-white/80 truncate">
-                          {topic.subjectTag}
+                        <span className="text-data-label text-white/80 truncate uppercase tracking-wide">
+                          {domain.subject.replace(/_/g, " ")}
                         </span>
                       )}
                       <span
@@ -176,21 +180,30 @@ export function TopicTreemap({ topics, isLoading }: TopicTreemapProps) {
                           isSmall ? "line-clamp-1 text-[11px]" : "line-clamp-3"
                         )}
                       >
-                        {topic.title}
+                        {topStory?.title ?? domain.subject.replace(/_/g, " ")}
                       </span>
                       {!isSmall && (
-                        <span className="text-data-label text-white/80">
-                          {topic.trendScore}
+                        <span className="flex items-center gap-1 text-data-label text-white/80">
+                          <Flame className="w-3 h-3" />
+                          {domain.heat} · {domain.topics.length} topic{domain.topics.length === 1 ? "" : "s"}
                         </span>
                       )}
                     </div>
-                  </div>
+                  </button>
                 </div>
               );
             })}
           </div>
         )}
       </CardContent>
+
+      <HotTopicsModal
+        subject={activeSubject}
+        topics={activeDomain?.topics ?? []}
+        onOpenChange={(open) => {
+          if (!open) setActiveSubject(null);
+        }}
+      />
     </Card>
   );
 }

@@ -5,9 +5,10 @@ import { StatsRow } from "@/components/dashboard/stats-row";
 import { ContinueDraftingList } from "@/components/dashboard/continue-drafting-list";
 import { AgentFeed, type DashboardAgentEvent } from "@/components/dashboard/agent-feed";
 import { TopicQueue } from "@/components/dashboard/topic-queue";
-import { TopicTreemap, type TrendingTopic } from "@/components/dashboard/topic-treemap";
+import { HotTopicsBoard, type HotTopicDomain } from "@/components/dashboard/hot-topics-board";
 import { listRuns, getRunEvents, getStats } from "@/lib/api/runs";
 import { listTopics } from "@/lib/api/topics";
+import type { TopicOut } from "@/lib/api/types";
 
 const ACTIVE_STATUSES = ["pending", "running", "strategizing", "writing", "finishing"];
 
@@ -62,23 +63,29 @@ export default function DashboardPage() {
   });
 
   const allTopicsQuery = useQuery({
-    queryKey: ["topics", "all-for-treemap"],
+    queryKey: ["topics", "all-for-hot-topics"],
     queryFn: () => listTopics({ limit: 200 }),
     refetchInterval: 15000,
   });
 
-  const trendingTopics: TrendingTopic[] = (() => {
+  // Neutral fallback for topics persisted before `relevance_score` existed
+  // (or still awaiting the backfill script) — keeps them visible in the
+  // board at a middling weight instead of vanishing or dominating.
+  const FALLBACK_RELEVANCE = 50;
+
+  const hotTopicDomains: HotTopicDomain[] = (() => {
     const items = allTopicsQuery.data?.items ?? [];
-    const bySubject = new Map<string, number>();
+    const bySubject = new Map<string, TopicOut[]>();
     for (const topic of items) {
-      const key = topic.subject ?? "miscellaneous";
-      bySubject.set(key, (bySubject.get(key) ?? 0) + 1);
+      const key = topic.subject ?? "miscellaneous_current_affairs";
+      const existing = bySubject.get(key) ?? [];
+      existing.push(topic);
+      bySubject.set(key, existing);
     }
-    return Array.from(bySubject.entries()).map(([subject, count]) => ({
-      id: subject,
-      title: subject.replace(/_/g, " "),
-      subjectTag: subject.replace(/_/g, " "),
-      trendScore: count,
+    return Array.from(bySubject.entries()).map(([subject, topics]) => ({
+      subject,
+      heat: topics.reduce((sum, t) => sum + (t.relevance_score ?? FALLBACK_RELEVANCE), 0),
+      topics,
     }));
   })();
 
@@ -98,7 +105,7 @@ export default function DashboardPage() {
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <TopicTreemap topics={trendingTopics} isLoading={allTopicsQuery.isLoading} />
+        <HotTopicsBoard domains={hotTopicDomains} isLoading={allTopicsQuery.isLoading} />
         <TopicQueue topics={topicsQuery.data?.items ?? []} isLoading={topicsQuery.isLoading} />
         <ContinueDraftingList runs={activeRuns} isLoading={activeRunsQuery.isLoading} />
         <AgentFeed events={eventsQuery.data ?? []} isLoading={eventsQuery.isLoading && activeRuns.length > 0} />

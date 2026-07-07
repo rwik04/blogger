@@ -271,6 +271,7 @@ export interface TopicOut {
   gs_papers: string[] | null;
   why_this_topic: string | null;
   current_relevance: string | null;
+  relevance_score: number | null;
   trigger_source_url: string | null;
   dedup_status: string;
   similarity_score: number | null;
